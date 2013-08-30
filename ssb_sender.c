@@ -15,6 +15,7 @@ struct sockaddr_in broadcastAddr; /* Broadcast address */
 
 char * send_buff;
 
+/*send_data함수는 다른 Raspberry pi장비에 데이터를 보내주는 기능을 수행합니다.*/
 
 void send_data(char * timestamp, int out_index, int current_signal, int count ){
     
@@ -24,6 +25,8 @@ void send_data(char * timestamp, int out_index, int current_signal, int count ){
            &broadcastAddr, sizeof(broadcastAddr)) != strlen(send_buff))
         error("sendto() sent a different number of bytes than expected");
 }
+
+/*메인함수에서는 타임스탬프를 계산하고 브로드캐스트 소켓을 세팅합니다*/
 
 int main(int argc, char *argv[])
 {
