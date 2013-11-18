@@ -3,16 +3,33 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
 
+#define SIGNAL_CNT		4
+#define DEFAULT_SIGNAL_PERIOD	30
+
+int isSystemFault;
+int signalTable[4];
+
+int signalSockCnt; 
+int signalSock[4];
+
+void emergency(int signo);
 void* connection_handler( void* );
 
 int main( int argc, char* argv[] )
 {
-	int socket_desc, client_sock, c, *new_sock;
+	int i, socket_desc, client_sock, c, *new_sock;
 	struct sockaddr_in server, client;
+
+	/* Initialize */
+	signalSockCnt=0;	
+	isSystemFault = 0;
+	for(i=0; i<4; i++) signalTable[i] = DEFAULT_SIGNAL_PERIOD;
+	signal(SIGINT, emergency);
 
 	/* Create socket */
 	socket_desc = socket(AF_INET , SOCK_STREAM , 0);
@@ -37,7 +54,7 @@ int main( int argc, char* argv[] )
 	puts("bind done");
 
 	/* Listen */
-	listen(socket_desc , 3);
+	listen(socket_desc , SIGNAL_CNT -1);
      
 	/* Accept and incoming connection */
 	puts("Waiting for incoming connections...");
@@ -49,6 +66,7 @@ int main( int argc, char* argv[] )
 		pthread_t sniffer_thread;
 		new_sock = malloc(1);
 		*new_sock = client_sock;
+		signalSock[signalSockCnt++] = client_sock;
 
 		if( pthread_create( &sniffer_thread , NULL ,  connection_handler , (void*) new_sock) < 0)
 		{
@@ -84,10 +102,16 @@ void *connection_handler(void *socket_desc)
 	while( (read_size = recv(sock , client_message , 100 , 0)) > 0 )
 	{
 		if ( strcmp( client_message, "get" ) == 0 ) {
-			const int signalInterval = 30;
+			int i, cur=0, signalInterval = 0;
 			time_t t;
 			struct tm* pt;
+
+			/* Validate check */
+			if ( isSystemFault ) {
+				for(i=0; i<SIGNAL_CNT; i++) signalTable[i] = DEFAULT_SIGNAL_PERIOD;	
+			}
 		
+			for(i=0; i<SIGNAL_CNT; i++) signalInterval += signalTable[i];	
 			time( &t );
 			pt = localtime( &t );
 
@@ -96,12 +120,28 @@ void *connection_handler(void *socket_desc)
 			int s = m*60 + pt->tm_sec;
 
 			int signalQ[4] = { 0, 1, 2, 3 };
-			int qIdx = s / signalInterval % 4;
+			int qIdx = s % signalInterval;
+			for(i=0; i<4; i++) {
+				cur += signalTable[i];
+				if ( qIdx < cur ) {
+					qIdx = i;
+					break;
+				}
+			}
 			message[0] = '0' + signalQ[ qIdx ];
 			message[1] = 0;
 		}
-		else if ( strcmp( client_message, "set" ) == 0 ) {
-			strcpy( message, "abcd" );
+		/* Updating signals */
+		else if ( strncmp( client_message, "set", 3 ) == 0 ) {
+			if ( isSystemFault != 1 ) {
+				int i;
+				for(i=0; i<SIGNAL_CNT; i++) {
+					signalTable[i] = client_message[3+i];
+				}
+				strcpy( message, "success" );
+			} else {
+				strcpy( message, "fail" );
+			}
 		}
 
 		/* Send the message back to client */
@@ -110,6 +150,7 @@ void *connection_handler(void *socket_desc)
 
 	if(read_size == 0)
 	{
+		isSystemFault = 1;
 		puts("Client disconnected");
 		fflush(stdout);
 	}
@@ -122,4 +163,16 @@ void *connection_handler(void *socket_desc)
 	free(socket_desc);
 
 	return 0;
+}
+
+void emergency(int signo)
+{
+	int i;
+	char message[100];
+	
+	for(i=0; i<SIGNAL_CNT; i++)
+	{
+//		write(signalSock[i] , message , strlen( message ) );
+	}
+	signal(signo, emergency);
 }
