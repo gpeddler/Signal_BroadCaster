@@ -23,7 +23,7 @@ public:
 	SignalFlag();
 	void signalConnect();
 	int getCurrentSignalState ();
-	void setSignal();
+	void setSignal(int, int, int, int);
 
 private:
 	int sock;
@@ -105,7 +105,10 @@ void TrafficAnalyzer::createConfigure( char** argv, int type ) {
 }
 
 void TrafficAnalyzer::analyze() {
-	
+	int top, left, right, bottom;
+	/* Load the synchronized traffic data */
+	/* Analyze */
+	signalFlag.setSignal(top, left, bottom, right);
 }
 
 void TrafficAnalyzer::run() {
@@ -135,6 +138,7 @@ void TrafficAnalyzer::run() {
 			}
 			cout << "Changed " << currentState << " & cnt per signal " << vehicleCnt/frameCnt <<  endl;
 			vehicleCnt = frameCnt = 0;
+	//		analyze();
 		}
 
 		frame1 = cvQueryFrame(capture);
@@ -222,13 +226,37 @@ void TrafficAnalyzer::initUDP()
 
 void TrafficAnalyzer::sendTrafficData( int timestamp, int out_index, int current_signal, int count ) 
 {
-    sprintf ( send_buff, "%d;%d;%d;%d", timestamp, out_index, current_signal, count );
+    sprintf ( send_buff, "%d;%d;%d;%d", current_signal, out_index, count, timestamp );
     if (sendto(sock, send_buff, strlen(send_buff), 0, (struct sockaddr *) 
            &broadcastAddr, sizeof(broadcastAddr)) != strlen(send_buff))
         assert(1); /* sendto() sent a different number of bytes than expected */
 }
 
 SignalFlag::SignalFlag() {
+}
+
+void SignalFlag::setSignal(int top, int left, int bottom, int right)
+{
+	char message[10] = "set", server_reply[2000];
+	message[3] = top;
+	message[4] = left;
+	message[5] = bottom;
+	message[6] = right;
+	message[7] = 0;
+	if ( sock == -1 )
+	{
+		return;
+	}
+
+	if ( send( sock, message, strlen( message ), 0 ) < 0 )
+	{
+		return;
+	}
+
+	if ( recv( sock, server_reply, 2000, 0 ) < 0 )
+	{
+		return;
+	}
 }
 
 int SignalFlag::getCurrentSignalState()
